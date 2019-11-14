@@ -46,11 +46,6 @@ jobs:
 
     - name: Publish to PyPI
       if: success() && startsWith(github.event.ref, 'refs/tags')
-      uses: pypa/gh-action-pypi-publish@v1.0.0a0
-      with:
-        user: __token__
-        password: ${{ secrets.pypi_token }}
-
-# Substantially speed up builds by caching the virtualenv for poetry on the poetry.lock hash
-#
-# https://medium.com/@vanflymen/blazing-fast-ci-with-github-actions-poetry-black-and-pytest-9e74299dd4a5
+      env:
+        TOKEN: ${{ secrets.pypi_token }}
+      run: poetry publish -u __token__ -p $TOKEN
