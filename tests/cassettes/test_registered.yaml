@@ -1,0 +1,43 @@
+interactions:
+- request:
+    body: null
+    headers:
+      Content-Type:
+      - application/vnd.schemaregistry.v1+json
+    method: POST
+    uri: http://localhost:8081/subjects/test_registered/versions
+  response:
+    body:
+      string: '{"id":1}'
+    headers:
+      Content-Length: '8'
+      Content-Type: application/vnd.schemaregistry.v1+json
+      Date: Tue, 05 Nov 2019 16:05:47 GMT
+      Server: Jetty(9.4.18.v20190429)
+      Vary: Accept-Encoding, User-Agent
+    status:
+      code: 200
+      message: OK
+    url: http://localhost:8081/subjects/test_registered/versions
+- request:
+    body: null
+    headers:
+      Content-Type:
+      - application/vnd.schemaregistry.v1+json
+    method: POST
+    uri: http://localhost:8081/subjects/test_registered
+  response:
+    body:
+      string: '{"subject":"test_registered","version":1,"id":1,"schema":"{\"type\":\"record\",\"name\":\"UnitTest\",\"fields\":[{\"name\":\"field\",\"type\":\"string\"}]}"}'
+    headers:
+      Content-Encoding: gzip
+      Content-Length: '130'
+      Content-Type: application/vnd.schemaregistry.v1+json
+      Date: Tue, 05 Nov 2019 16:05:47 GMT
+      Server: Jetty(9.4.18.v20190429)
+      Vary: Accept-Encoding, User-Agent
+    status:
+      code: 200
+      message: OK
+    url: http://localhost:8081/subjects/test_registered
+version: 1
