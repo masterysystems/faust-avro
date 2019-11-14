@@ -17,19 +17,19 @@ jobs:
       run: poetry install
     - name: Package Build
       run: poetry build
-#   - name: Test & publish code coverage
-#     uses: paambaati/codeclimate-action@v2.3.0
-#     env:
-#       CC_TEST_REPORTER_ID: ${{ secrets.code_climate_id }}
-#     with:
-#       coverageCommand: poetry run pytest
-#       debug: true
-#   - name: Publish to PyPI
-#     if: success() && startsWith(github.event.ref, 'refs/tags')
-#     uses: pypa/gh-action-pypi-publish@v1.0.0a0
-#     with:
-#       user: __token__
-#       password: $${ secrets.pypi_token }}
+    - name: Test & publish code coverage
+      uses: paambaati/codeclimate-action@v2.3.0
+      env:
+        CC_TEST_REPORTER_ID: ${{ secrets.code_climate_id }}
+      with:
+        coverageCommand: poetry run pytest
+        debug: true
+    - name: Publish to PyPI
+      if: success() && startsWith(github.event.ref, 'refs/tags')
+      uses: pypa/gh-action-pypi-publish@v1.0.0a0
+      with:
+        user: __token__
+        password: $${ secrets.pypi_token }}
 
 # Substantially speed up builds by caching the virtualenv for poetry on the poetry.lock hash
 #

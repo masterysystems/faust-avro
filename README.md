@@ -1,3 +1,7 @@
+[![Maintainability](https://api.codeclimate.com/v1/badges/13676d472164ce8b3699/maintainability)](https://codeclimate.com/github/masterysystems/faust-avro/maintainability)
+
+[![Test Coverage](https://api.codeclimate.com/v1/badges/13676d472164ce8b3699/test_coverage)](https://codeclimate.com/github/masterysystems/faust-avro/test_coverage)
+
 # Faust Avro
 
 Avro codec and schema registry support for Faust.
