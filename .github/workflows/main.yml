@@ -43,7 +43,6 @@ jobs:
         CC_TEST_REPORTER_ID: ${{ secrets.code_climate_id }}
       with:
         coverageCommand: poetry run pytest
-        debug: true
 
     - name: Publish to PyPI
       if: success() && startsWith(github.event.ref, 'refs/tags')
