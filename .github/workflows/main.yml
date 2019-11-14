@@ -29,7 +29,7 @@ jobs:
       uses: pypa/gh-action-pypi-publish@v1.0.0a0
       with:
         user: __token__
-        password: $${ secrets.pypi_token }}
+        password: ${{ secrets.pypi_token }}
 
 # Substantially speed up builds by caching the virtualenv for poetry on the poetry.lock hash
 #
