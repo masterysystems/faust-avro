@@ -7,30 +7,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v1
+
     - uses: actions/setup-python@v1
       with:
         python-version: '3.x'
         architecture: 'x64'
+
     - name: Install Poetry
       run: pip install poetry
+
+    - name: Cache Virtualenv
+      uses: actions/cache@v1
+      id: cache
+      with:
+        path: ~/.virtualenvs
+        key: poetry-${{ hashFiles('**/poetry.lock') }}
+        restore-keys: |
+          poetry-${{ hashFiles('**/poetry.lock') }}
+
+    - name: Poetry Cache Configuration
+      run: |
+        poetry config settings.virtualenvs.in-project false
+        poetry config settings.virtualenvs.path ~/.virtualenvs
+
     - name: Install Dependencies
       run: poetry install
+      if: steps.cache.outputs.cache-hit != 'true'
+
     - name: Package Build
       run: poetry build
+
     - name: Test & publish code coverage
       uses: paambaati/codeclimate-action@v2.3.0
       env:
         CC_TEST_REPORTER_ID: ${{ secrets.code_climate_id }}
       with:
         coverageCommand: poetry run pytest
-        debug: true
+
     - name: Publish to PyPI
       if: success() && startsWith(github.event.ref, 'refs/tags')
-      uses: pypa/gh-action-pypi-publish@v1.0.0a0
-      with:
-        user: __token__
-        password: ${{ secrets.pypi_token }}
-
-# Substantially speed up builds by caching the virtualenv for poetry on the poetry.lock hash
-#
-# https://medium.com/@vanflymen/blazing-fast-ci-with-github-actions-poetry-black-and-pytest-9e74299dd4a5
+      env:
+        TOKEN: ${{ secrets.pypi_token }}
+      run: poetry publish -u __token__ -p $TOKEN
