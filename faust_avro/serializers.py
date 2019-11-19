@@ -15,7 +15,7 @@ from faust.types.core import K, OpenHeadersArg, V
 from faust.types.serializers import KT, VT
 from faust.types.tuples import Message
 
-from faust_avro.asyncio import ConfluentSchemaRegistryClient
+from faust_avro.asyncio import ConfluentSchemaRegistryClient as CSRC
 from faust_avro.exceptions import CodecException
 from faust_avro.record import Record
 from faust_avro.registry import Registry
@@ -35,12 +35,12 @@ class AvroCodec:
     subjects: List[SubjectT] = field(default_factory=list)
     schema_id: Optional[SchemaID] = None
 
-    async def register(self, registry: ConfluentSchemaRegistryClient):
+    async def register(self, registry: CSRC):
         schema = json.dumps(self.record.to_avro(self.registry))
         tasks = [registry.register(subject, schema) for subject in self.subjects]
         self.schema_id, *_ = funcy.distinct(await asyncio.gather(*tasks))
 
-    async def sync(self, registry: ConfluentSchemaRegistryClient):
+    async def sync(self, registry: CSRC):
         schema = json.dumps(self.record.to_avro(self.registry))
         self.schema_id = await registry.sync(self.subjects[0], schema)
 
@@ -71,9 +71,7 @@ class AvroSchemaRegistry(faust.Schema):
     def __init__(self, *, registry_url="http://localhost:8081", **kwargs):
         super().__init__(**kwargs)
         self.codecs: Dict[Type[Record], AvroCodec] = AvroCodecDict()
-        self.registry: ConfluentSchemaRegistryClient = ConfluentSchemaRegistryClient(
-            registry_url
-        )
+        self.registry: CSRC = CSRC(registry_url)
 
     def __call__(self, *args, **kwargs):
         # Normally a class gets passed as the App's Schema parameter.
