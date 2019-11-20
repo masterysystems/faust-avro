@@ -4,8 +4,13 @@ from faust_avro.serializers import AvroSchemaRegistry
 
 
 class App(faust.App):
-    def __init__(self, *args, **kwargs):
-        schema = kwargs.setdefault("Schema", AvroSchemaRegistry())
+    def __init__(self, *args, registry_url="http://localhost:8081", **kwargs):
+        """Create a new Avro enabled Faust app.
+
+        :param registry_url: The base URL to the schema registry.
+        """
+        registry = AvroSchemaRegistry(registry_url=registry_url)
+        schema = kwargs.setdefault("Schema", registry)
         super().__init__(*args, **kwargs)
 
         @self.service
