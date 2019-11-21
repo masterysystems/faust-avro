@@ -1,4 +1,6 @@
+import asyncio
 import contextlib
+import threading
 import typing
 
 import aiohttp
@@ -10,6 +12,25 @@ Schema = str
 
 
 CONTENT_TYPE = {"Content-Type": "application/vnd.schemaregistry.v1+json"}
+
+
+def _run_in_thread(coro):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(coro)
+
+
+def run_in_thread(coro):
+    """Runs a coroutine in a separate loop/thread.
+
+    Use this when you're running in a loop, but have had the `async def`
+    dropped off your backtrace, so that you can't just 'await' directly.
+
+    Mostly, just don't use this.
+    """
+    thread = threading.Thread(target=_run_in_thread, args=(coro, ))
+    thread.start()
+    thread.join()
 
 
 class ConfluentSchemaRegistryClient:

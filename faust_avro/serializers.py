@@ -1,7 +1,7 @@
 import asyncio
 import json
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, InitVar
 from io import BytesIO
 from typing import Any, Dict, List, Optional, Tuple, Type, cast
 
@@ -15,7 +15,7 @@ from faust.types.core import K, OpenHeadersArg, V
 from faust.types.serializers import KT, VT
 from faust.types.tuples import Message
 
-from faust_avro.asyncio import ConfluentSchemaRegistryClient as CSRC
+from faust_avro.asyncio import ConfluentSchemaRegistryClient as CSRC, run_in_thread
 from faust_avro.exceptions import CodecException
 from faust_avro.record import Record
 from faust_avro.registry import Registry
@@ -34,6 +34,10 @@ class AvroCodec:
     registry: Registry
     subjects: List[SubjectT] = field(default_factory=list)
     schema_id: Optional[SchemaID] = None
+    schema: InitVar[Any] = None
+
+    def __post_init__(self, schema=None):
+        self.schema = fastavro.parse_schema(self.record.to_avro(self.registry))
 
     async def register(self, registry: CSRC):
         schema = json.dumps(self.record.to_avro(self.registry))
@@ -45,14 +49,12 @@ class AvroCodec:
         self.schema_id = await registry.sync(self.subjects[0], schema)
 
     def dumps(self, value: Record) -> bytes:
-        buf = BytesIO()
-        schema = fastavro.parse_schema(self.record.to_avro(self.registry))
-        fastavro.schemaless_writer(buf, schema, value.to_representation())
-        return buf.getvalue()
+        payload = BytesIO()
+        fastavro.schemaless_writer(payload, self.schema, value.to_representation())
+        return payload.getvalue()
 
     def loads(self, s: bytes) -> Record:
-        schema = fastavro.parse_schema(self.record.to_avro(self.registry))
-        return self.record(**fastavro.schemaless_reader(BytesIO(s), schema))
+        return self.record(**fastavro.schemaless_reader(BytesIO(s), self.schema))
 
 
 class AvroCodecDict(dict):
@@ -93,9 +95,6 @@ class AvroSchemaRegistry(faust.Schema):
 
     @funcy.memoize
     def get_codec_by_id(self, schema_id: SchemaID) -> AvroCodec:
-        # TODO -- this will fail when a new schema_id comes down the pike
-        # but since we're sync code here, fixing it is going to be ugly.
-        # https://www.pivotaltracker.com/story/show/169435620
         for codec in self.codecs.values():
             if codec.schema_id == schema_id:
                 return codec
@@ -125,9 +124,11 @@ class AvroSchemaRegistry(faust.Schema):
         """Dump the schema id and payload into a confluent client message."""
 
         codec = self.codecs[type(data)]
+        if codec.schema_id is None:
+            # This is a hack to get around the dropped async context
+            run_in_thread(codec.register(self.registry))
         header = HEADER.pack(MAGIC_BYTE, codec.schema_id)
-        payload = codec.dumps(data)
-        return header + payload
+        return header + codec.dumps(data)
 
     def loads_key(self, app: AppT, message: Message, **kwargs) -> KT:
         # TODO -- should we raise error if kwargs is not empty?
