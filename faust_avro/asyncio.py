@@ -129,6 +129,7 @@ class ConfluentSchemaRegistryClient:
         """
         url = f"/compatibility/subjects/{subject}/versions/latest"
         async with self.post(url, schema=schema) as json:
+            # https://docs.confluent.io/1.0/schema-registry/docs/api.html#post--compatibility-subjects-(string-%20subject)-versions-(versionId-%20version)
             if json.get("error_code", False) == 40401:
                 # "Subject not found." so as the first upload, it will be compatible with itself.
                 return True
