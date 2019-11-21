@@ -129,6 +129,9 @@ class ConfluentSchemaRegistryClient:
         """
         url = f"/compatibility/subjects/{subject}/versions/latest"
         async with self.post(url, schema=schema) as json:
+            if json.get("error_code", False) == 40401:
+                # "Subject not found." so as the first upload, it will be compatible with itself.
+                return True
             return json["is_compatible"]
 
     async def is_registered(self, subject: Subject, schema: Schema) -> bool:

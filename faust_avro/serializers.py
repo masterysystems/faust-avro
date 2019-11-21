@@ -39,10 +39,22 @@ class AvroCodec:
     def __post_init__(self, schema=None):
         self.schema = fastavro.parse_schema(self.record.to_avro(self.registry))
 
+    async def compatible(self, registry: CSRC):
+        schema = json.dumps(self.record.to_avro(self.registry))
+        tasks = [registry.compatible(subject, schema) for subject in self.subjects]
+        compatible = await asyncio.gather(*tasks)
+        failed = [subj for subj, valid in zip(self.subjects, compatible) if not valid]
+        if failed:
+            print(f"{self.record.__module__}.{self.record.__name__} incompatible for: {failed}")
+
+        return all(compatible)
+
     async def register(self, registry: CSRC):
         schema = json.dumps(self.record.to_avro(self.registry))
         tasks = [registry.register(subject, schema) for subject in self.subjects]
-        self.schema_id, *_ = funcy.distinct(await asyncio.gather(*tasks))
+        self.schema_id, *ids = funcy.distinct(await asyncio.gather(*tasks))
+        assert not ids, "Schemas must share the same id across all subjects!"
+        print(f"{self.record.__module__}.{self.record.__name__} registered as schema id {self.schema_id} for: {self.subjects}")
 
     async def sync(self, registry: CSRC):
         schema = json.dumps(self.record.to_avro(self.registry))
@@ -96,6 +108,11 @@ class AvroSchemaRegistry(faust.Schema):
     @funcy.memoize
     def get_codec_by_id(self, schema_id: SchemaID) -> AvroCodec:
         for codec in self.codecs.values():
+            # We should do this outside the loop and in parallel. In theory the startup agent should do it but in practice it looks like we receive messages
+            # before that agent has finished running, meaning that we are in an unready state.
+            if codec.schema_id is None:
+                # This is a hack to get around the dropped async context
+                run_in_thread(codec.register(self.registry))
             if codec.schema_id == schema_id:
                 return codec
         else:
@@ -106,8 +123,12 @@ class AvroSchemaRegistry(faust.Schema):
         await asyncio.gather(*tasks)
 
     async def register(self):
-        tasks = [codec.register(self.registry) for codec in self.codecs.values()]
-        await asyncio.gather(*tasks)
+        compatible = [codec.compatible(self.registry) for codec in self.codecs.values()]
+        if all(await asyncio.gather(*compatible)):
+            tasks = [codec.register(self.registry) for codec in self.codecs.values()]
+            await asyncio.gather(*tasks)
+        else:
+            raise Exception("Incompatible Schemas")
 
     def _loads(self, payload: bytes) -> Record:
         """Decompose a confluent client message into the schema id and payload bytes"""
