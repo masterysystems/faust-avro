@@ -12,6 +12,7 @@ from cached_property import cached_property
 from faust.types.app import AppT
 from faust.types.codecs import CodecArg
 from faust.types.core import K, OpenHeadersArg, V
+from faust.types.models import ModelT
 from faust.types.serializers import KT, VT
 from faust.types.tuples import Message
 
@@ -34,13 +35,15 @@ class AvroCodec:
     registry: Registry
     subjects: List[SubjectT] = field(default_factory=list)
     schema_id: Optional[SchemaID] = None
-    schema: InitVar[Any] = None
+    codec: InitVar[Any] = None
+    schema: InitVar[str] = ""
 
-    def __post_init__(self, schema=None):
-        self.schema = fastavro.parse_schema(self.record.to_avro(self.registry))
+    def __post_init__(self, codec=None, schema=""):
+        self.schema = self.record.to_avro(self.registry)
+        self.codec = fastavro.parse_schema(self.schema)
 
     async def compatible(self, registry: CSRC):
-        schema = json.dumps(self.record.to_avro(self.registry))
+        schema = json.dumps(self.schema)
         tasks = [registry.compatible(subject, schema) for subject in self.subjects]
         compatible = await asyncio.gather(*tasks)
         failed = [subj for subj, valid in zip(self.subjects, compatible) if not valid]
@@ -50,23 +53,23 @@ class AvroCodec:
         return all(compatible)
 
     async def register(self, registry: CSRC):
-        schema = json.dumps(self.record.to_avro(self.registry))
+        schema = json.dumps(self.schema)
         tasks = [registry.register(subject, schema) for subject in self.subjects]
         self.schema_id, *ids = funcy.distinct(await asyncio.gather(*tasks))
         assert not ids, "Schemas must share the same id across all subjects!"
         print(f"{self.record.__module__}.{self.record.__name__} registered as schema id {self.schema_id} for: {self.subjects}")
 
     async def sync(self, registry: CSRC):
-        schema = json.dumps(self.record.to_avro(self.registry))
+        schema = json.dumps(self.schema)
         self.schema_id = await registry.sync(self.subjects[0], schema)
 
     def dumps(self, value: Record) -> bytes:
         payload = BytesIO()
-        fastavro.schemaless_writer(payload, self.schema, value.to_representation())
+        fastavro.schemaless_writer(payload, self.codec, value.to_representation())
         return payload.getvalue()
 
     def loads(self, s: bytes) -> Record:
-        return self.record(**fastavro.schemaless_reader(BytesIO(s), self.schema))
+        return self.record(**fastavro.schemaless_reader(BytesIO(s), self.codec))
 
 
 class AvroCodecDict(dict):
@@ -129,6 +132,9 @@ class AvroSchemaRegistry(faust.Schema):
             await asyncio.gather(*tasks)
         else:
             raise Exception("Incompatible Schemas")
+
+    async def to_avro(self, record: ModelT) -> str:
+        return json.dumps(self.codecs[record].schema)
 
     def _loads(self, payload: bytes) -> Record:
         """Decompose a confluent client message into the schema id and payload bytes"""
