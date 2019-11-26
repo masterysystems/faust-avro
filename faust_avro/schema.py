@@ -5,12 +5,11 @@ These get constructed from either a json-parsed avro schema, or from a python
 dataclass.
 """
 
-import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
 from importlib import import_module
-from typing import Any, Iterable, List, Optional, Set, Union
+from typing import Any, Iterable, List, Optional, Set
 
 __all__ = [
     # Types
@@ -159,20 +158,13 @@ class AvroField(Schema):
     name: str
     type: Any
     doc: Optional[str] = None
-    default: Optional[Any] = MISSING  # Can't use None, because that's a valid default
-    order: Optional[
-        Ordering
-    ] = None  # Must be None so we don't add this to the schema if unspecified
     aliases: Iterable[str] = field(default_factory=list)
 
-    def _default(self) -> Union[str, object]:
-        if self.default == MISSING:
-            return MISSING
-        elif self.type in PRIMITIVES[-2:]:
-            # Don't try to json-dump str or bytes, they are fine as-is.
-            return self.default
-        else:
-            return json.dumps(self.default)
+    # Can't use None, because that's a valid default
+    default: Optional[Any] = MISSING
+
+    # Must be None so we don't add this to the schema if unspecified
+    order: Optional[Ordering] = None
 
     def _to_avro(self, visited: VisitedT) -> AvroSchemaT:
         return self._add_fields(
@@ -181,7 +173,7 @@ class AvroField(Schema):
             "order",
             "aliases",
             type=self.type._to_avro(visited),
-            default=self._default(),
+            default=self.default,
         )
 
 

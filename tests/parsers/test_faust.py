@@ -56,7 +56,7 @@ def test_faust(registry):
         timestamp: datetime
         uuid: UUID
         # Pythonic types
-        optional: Optional[str]
+        optional: Optional[str]  # Faust auto-defaults this to None.
         default: str = "a default"
         # Nested
         nested: Optional[Nested] = None
