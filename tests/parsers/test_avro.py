@@ -44,7 +44,7 @@ def fixed(name, size=16, **kwargs):
         "bytes",
         "string",
         # Complex types
-        record("Record", fields=[field("field", "boolean", default="true")]),
+        record("Record", fields=[field("field", "boolean", default=True)]),
         enum("enumeration", "red", "green", "blue"),
         array("string"),
         mapping("boolean"),

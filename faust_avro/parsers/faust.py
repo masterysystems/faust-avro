@@ -73,7 +73,7 @@ def parse_field(registry: Any, model: FieldDescriptor, namespace: str) -> Schema
     if model.required:
         return AvroField(model.field, schema)
     else:
-        return AvroField(model.field, schema, None, model.default)
+        return AvroField(model.field, schema, None, default=model.default)
 
 
 def parse_enum(registry: Any, model: EnumMeta, namespace: str) -> Schema:

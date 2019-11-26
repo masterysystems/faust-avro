@@ -1,10 +1,8 @@
 import collections.abc
-import json
 from typing import Any, Dict, Iterable, Optional
 
 from faust_avro.exceptions import UnknownTypeError
 from faust_avro.schema import (
-    PRIMITIVES,
     AvroArray,
     AvroEnum,
     AvroField,
@@ -45,10 +43,7 @@ def parse_logical_type(registry: Any, **kwargs: Any) -> Schema:
 
 def parse_record_field(registry: Any, *, type, **kwargs: Any) -> AvroField:
     """Helper function to parse the type of a record field."""
-    type = parse(registry, type)
-    if "default" in kwargs and type not in PRIMITIVES[-2:]:
-        kwargs["default"] = json.loads(kwargs["default"])
-    return AvroField(type=type, **kwargs)
+    return AvroField(type=parse(registry, type), **kwargs)
 
 
 def parse_complex(
