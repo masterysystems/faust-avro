@@ -19,12 +19,12 @@ class App(faust.App):
         class AvroSchemaRegistryService(faust.Service):
             async def on_start(_):
                 """Fetch faust_avro.Record schema ids from the schema registry."""
-                await schema.sync()
+                await registry.sync()
 
         @self.command()
         async def register(_):
             """Register faust_avro.Record schemas with the schema registry."""
-            await schema.register()
+            await registry.register()
 
         @self.command(faust.cli.argument('model'))
         async def schema(app, model):
