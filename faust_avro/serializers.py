@@ -115,7 +115,7 @@ class AvroSchemaRegistry(faust.Schema):
             # before that agent has finished running, meaning that we are in an unready state.
             if codec.schema_id is None:
                 # This is a hack to get around the dropped async context
-                run_in_thread(codec.register(self.registry))
+                run_in_thread(codec.sync(self.registry))
             if codec.schema_id == schema_id:
                 return codec
         else:
@@ -153,7 +153,7 @@ class AvroSchemaRegistry(faust.Schema):
         codec = self.codecs[type(data)]
         if codec.schema_id is None:
             # This is a hack to get around the dropped async context
-            run_in_thread(codec.register(self.registry))
+            run_in_thread(codec.sync(self.registry))
         header = HEADER.pack(MAGIC_BYTE, codec.schema_id)
         return header + codec.dumps(data)
 
