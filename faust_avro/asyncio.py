@@ -33,6 +33,18 @@ def run_in_thread(coro):
     thread.join()
 
 
+class SchemaException(Exception):
+    """A generic async schema registry client exception."""
+
+
+class SchemaNotFound(SchemaException):
+    """The schema has not been registered with the schema registry for that subject."""
+
+
+class SubjectNotFound(SchemaException):
+    """The schema registry has no such subject."""
+
+
 class ConfluentSchemaRegistryClient:
     """A Confluent AVRO Schema Registry Client.
 
@@ -116,7 +128,16 @@ class ConfluentSchemaRegistryClient:
         :returns: The id of the schema.
         """
         async with self.post(f"/subjects/{subject}", schema=schema) as json:
-            return json["id"]
+            if json.get("error_code", False) == 40401:
+                # "Subject not found" -- no schemas ever registered on this topic-key/value.
+                raise SubjectNotFound(subject)
+            if json.get("error_code", False) == 40403:
+                # "Schema not found" -- this schema has not been registered.
+                raise SchemaNotFound(schema)
+            try:
+                return json["id"]
+            except KeyError:
+                raise SchemaException(json)
 
     async def compatible(self, subject: Subject, schema: Schema) -> bool:
         """
@@ -131,7 +152,7 @@ class ConfluentSchemaRegistryClient:
         async with self.post(url, schema=schema) as json:
             # https://docs.confluent.io/1.0/schema-registry/docs/api.html#post--compatibility-subjects-(string-%20subject)-versions-(versionId-%20version)
             if json.get("error_code", False) == 40401:
-                # "Subject not found." so as the first upload, it will be compatible with itself.
+                # "Subject not found" so as the first upload, it will be compatible with itself.
                 return True
             return json["is_compatible"]
 
