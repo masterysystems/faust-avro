@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "faust_avro"
-version = "0.1.4"
+version = "0.2.0"
 description = "Avro codec and schema registry support for Faust"
 authors = ["Mastery Systems LLC <oss@mastery.net>"]
 readme = "README.md"
