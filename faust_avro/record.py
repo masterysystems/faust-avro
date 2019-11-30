@@ -1,4 +1,4 @@
-from typing import ClassVar, Iterable, Optional
+from typing import Any, ClassVar, Dict, Iterable, Optional
 
 import faust
 
@@ -18,7 +18,7 @@ class Record(faust.Record, abstract=True):
         cls._avro_aliases = avro_aliases or [cls.__name__]
 
     @classmethod
-    def to_avro(cls, registry):
+    def to_avro(cls, registry) -> Dict[str, Any]:
         from faust_avro.parsers.faust import parse
 
         avro_schema = parse(registry, cls)

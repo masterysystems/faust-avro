@@ -5,6 +5,8 @@ import typing
 
 import aiohttp
 
+from faust_avro.registry import Registry
+
 JSON = typing.AsyncGenerator[typing.Dict[str, typing.Any], None]
 SchemaID = int
 Subject = str
@@ -14,13 +16,13 @@ Schema = str
 CONTENT_TYPE = {"Content-Type": "application/vnd.schemaregistry.v1+json"}
 
 
-def _run_in_thread(coro):
+def _run_in_thread(coro: typing.Awaitable) -> None:
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     loop.run_until_complete(coro)
 
 
-def run_in_thread(coro):
+def run_in_thread(coro: typing.Awaitable) -> None:
     """Runs a coroutine in a separate loop/thread.
 
     Use this when you're running in a loop, but have had the `async def`
@@ -28,7 +30,7 @@ def run_in_thread(coro):
 
     Mostly, just don't use this.
     """
-    thread = threading.Thread(target=_run_in_thread, args=(coro, ))
+    thread = threading.Thread(target=_run_in_thread, args=(coro,))
     thread.start()
     thread.join()
 
@@ -56,6 +58,7 @@ class ConfluentSchemaRegistryClient:
         :param url: The base URL to the schema registry.
         """
         self.url: str = url
+        self.registry: Registry = Registry()
 
     @contextlib.asynccontextmanager
     async def get(self, path: str) -> JSON:

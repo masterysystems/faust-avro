@@ -1,9 +1,10 @@
 import pytest
-from faust_avro.serializers import Registry
 
 
 @pytest.fixture
 def registry():
+    from faust_avro.registry import Registry
+
     return Registry()
 
 

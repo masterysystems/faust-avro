@@ -1,46 +1,74 @@
 from datetime import datetime, timezone
+import tempfile
 
+from faust.exceptions import ValueDecodeError
 from faust.types.tuples import Message
 
 import pytest
 from assertpy import assert_that
-from faust_avro import AvroSchemaRegistry, CodecException, Record
+from faust_avro import App, Record, context as ctx
+from faust_avro.serializers import Codec
+
+
+class Key(Record):
+    idx: int
+
+
+class Person(Record):
+    name: str
+    age: int
+    birth: datetime
 
 
 @pytest.fixture
-def asr(request):
-    return AvroSchemaRegistry()
+def app(request):
+    with tempfile.TemporaryDirectory() as temp:
+        yield App("unittest", datadir=temp)
 
 
 @pytest.fixture
-def record(request):
-    class Person(Record):
-        name: str
-        age: int
-        birth: datetime
-
-    return Person
-
-
-def test_registry(asr, record):
-    # Force the record to have a schema id and the right lookup tables defined for it
-    asr.define("unittest", "key", record)
-    asr.codecs[record].schema_id = 0
-
-    p = record("Unit Test", 0, datetime(1970, 1, 1, 0, 0, 0, 0, timezone.utc))
-
-    for meth in ["key", "value"]:
-        dumps = getattr(asr, f"dumps_{meth}")
-        loads = getattr(asr, f"loads_{meth}")
-
-        serialized, headers = dumps(None, p, headers={})
-        message = Message("ut-topic", 0, 0, 0, 0, None, serialized, serialized, None)
-        record = loads(None, message, headers={})
-
-        assert_that(p).is_equal_to(record)
+def topic(app):
+    t = app.topic("people", key_type=Key, value_type=Person)
+    with ctx.context(ctx.topic, t):
+        t.schema.key_serializer.schema_id = 0
+        t.schema.value_serializer.schema_id = 1
+        yield t
+        t.schema.key_serializer.schema_id = None
+        t.schema.value_serializer.schema_id = None
 
 
-def test_registry_garbage(asr, record):
-    with pytest.raises(CodecException):
-        message = Message("ut-topic", 0, 0, 0, 0, None, b"failure", None, None)
-        asr.loads_key(None, message, headers={})
+def test_codec_not_implemented():
+    with pytest.raises(NotImplementedError):
+        Codec(Person, kwargs=True)
+
+    c = Codec(Person)
+    with pytest.raises(NotImplementedError):
+        c.clone()
+    with pytest.raises(NotImplementedError):
+        c | True
+
+
+def test_key_serde(app, topic):
+    k = Key(1)
+
+    payload, headers = topic.prepare_key(k, None)
+    message = Message("ut-topic", 0, 0, 0, 0, None, payload, None, None)
+    record = topic.schema.loads_key(app, message)
+
+    assert_that(k).is_equal_to(record)
+
+
+def test_value_serde(app, topic):
+    v = Person("Unit Test", 0, datetime(1970, 1, 1, 0, 0, 0, 0, timezone.utc))
+
+    payload, headers = topic.prepare_value(v, None)
+    message = Message("ut-topic", 0, 0, 0, 0, None, None, payload, None)
+    record = topic.schema.loads_value(app, message)
+
+    assert_that(v).is_equal_to(record)
+
+
+def test_garbage(app, topic):
+    message = Message("ut-topic", 0, 0, 0, 0, None, None, b"failure", None)
+    with pytest.raises(ValueDecodeError):
+        topic.schema.loads_value(app, message)

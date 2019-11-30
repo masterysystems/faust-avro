@@ -3,7 +3,8 @@ import tempfile
 
 import pytest
 from assertpy import assert_that
-from faust_avro import App, AvroSchemaRegistry, Record
+from faust_avro import App, Record
+from faust_avro.serializers import Schema
 
 
 @pytest.mark.vcr()
@@ -29,15 +30,16 @@ async def test_app():
         app = App("unittest", datadir=temp)
         people = app.topic("people", value_type=Person)
 
-        # faust_avro apps must have AvroSchemaRegistry as the schema of a topic
-        assert_that(people.schema).is_type_of(AvroSchemaRegistry)
+        # faust_avro apps must have faust_avro.Schema as the schema of a topic
+        assert_that(people.schema).is_instance_of(Schema)
+        assert_that(people.schema.value_serializer.record).is_equal_to(Person)
 
 
 def test_schema():
     # This test is really slow -- does it add enough value to keep it?
     # No negative test because I don't want it slower...
-    cmd = """python -m faust -A examples.log_message schema examples.log_message.LogMessage"""
+    cmd = """python -m faust -A examples.log_message schema LogMessage"""
     result = subprocess.run(cmd.split(), check=True, stdout=subprocess.PIPE)
     assert_that(result.stdout).is_equal_to(
-        b'{"type": "record", "name": "examples.log_message.LogMessage", "aliases": ["LogMessage"], "fields": [{"type": "string", "name": "fmt"}, {"type": {"type": "map", "values": "string"}, "name": "data"}]}\n'
+        b"{'type': 'record', 'name': 'examples.log_message.LogMessage', 'aliases': ['LogMessage'], 'fields': [{'type': 'string', 'name': 'fmt'}, {'type': {'type': 'map', 'values': 'string'}, 'name': 'data'}]}\n"
     )

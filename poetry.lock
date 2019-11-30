@@ -135,7 +135,7 @@ typed-ast = ">=1.4.0"
 d = ["aiohttp (>=3.3.2)", "aiohttp-cors"]
 
 [[package]]
-category = "main"
+category = "dev"
 description = "A decorator for caching properties in classes."
 name = "cached-property"
 optional = false
@@ -1062,7 +1062,7 @@ docs = ["sphinx", "jaraco.packaging (>=3.2)", "rst.linker (>=1.9)"]
 testing = ["pathlib2", "contextlib2", "unittest2"]
 
 [metadata]
-content-hash = "348c81098f9ae22e22a8914dd0cdb947e578c91902014acf12c4a8b0797a047d"
+content-hash = "3602260e2f666e0d68ca683c5008102aba71eb95a3fc3cbc805536340cf91ac4"
 python-versions = "^3.7"
 
 [metadata.files]

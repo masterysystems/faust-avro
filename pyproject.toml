@@ -15,7 +15,6 @@ classifiers = [
 [tool.poetry.dependencies]
 python = "^3.7"
 aiohttp = "^3.6"
-cached-property = "^1.5"
 fastavro = "^0.22.5"
 faust = "^1.7"
 funcy = "^1.13"
@@ -42,7 +41,7 @@ include_trailing_comma = true
 force_grid_wrap = 0
 use_parentheses = true
 line_length = 88
-known_third_party = ["aiohttp", "cached_property", "fastavro", "faust", "funcy"]
+known_third_party = ["aiohttp", "click", "fastavro", "faust", "funcy"]
 
 [build-system]
 requires = ["poetry>=0.12"]

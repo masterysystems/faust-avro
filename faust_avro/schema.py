@@ -125,7 +125,7 @@ class NamedSchema(Schema):
 
     python_type: Optional[type] = field(default=None, compare=False)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         try:
             self.python_type = self._import_class(self.name)
         except ImportError:
@@ -206,7 +206,7 @@ class AvroEnum(NamedSchema):
     symbols: Iterable[str] = field(default_factory=list)
     default: Optional[str] = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         super().__post_init__()
         if self.python_type is None:
             self.python_type = Enum(self.name, " ".join(self.symbols))
