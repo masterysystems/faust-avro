@@ -1,4 +1,13 @@
+import tempfile
+
 import pytest
+from faust_avro import App
+
+
+@pytest.fixture
+def app(request):
+    with tempfile.TemporaryDirectory() as temp:
+        yield App("unittest", datadir=temp)
 
 
 @pytest.fixture

@@ -1,12 +1,12 @@
 from datetime import datetime, timezone
-import tempfile
 
 from faust.exceptions import ValueDecodeError
 from faust.types.tuples import Message
 
 import pytest
 from assertpy import assert_that
-from faust_avro import App, Record, context as ctx
+from faust_avro import Record
+from faust_avro import context as ctx
 from faust_avro.serializers import Codec
 
 
@@ -18,12 +18,6 @@ class Person(Record):
     name: str
     age: int
     birth: datetime
-
-
-@pytest.fixture
-def app(request):
-    with tempfile.TemporaryDirectory() as temp:
-        yield App("unittest", datadir=temp)
 
 
 @pytest.fixture
