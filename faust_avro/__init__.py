@@ -6,11 +6,9 @@ from faust_avro.exceptions import (
     UnknownTypeError,
 )
 from faust_avro.record import Record
-from faust_avro.serializers import AvroSchemaRegistry
 
 __all__ = [
     "App",
-    "AvroSchemaRegistry",
     "CodecException",
     "Record",
     "SchemaException",

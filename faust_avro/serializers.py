@@ -1,25 +1,24 @@
 import asyncio
+import contextlib
 import json
 import struct
-from dataclasses import dataclass, field, InitVar
 from io import BytesIO
-from typing import Any, Dict, List, Optional, Tuple, Type, cast
+from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, Tuple, Type
 
 import fastavro
 import faust
 import funcy
-from cached_property import cached_property
+from faust.types import TopicT
 from faust.types.app import AppT
-from faust.types.codecs import CodecArg
+from faust.types.codecs import CodecArg, CodecT
 from faust.types.core import K, OpenHeadersArg, V
-from faust.types.models import ModelT
+from faust.types.models import ModelArg
 from faust.types.serializers import KT, VT
 from faust.types.tuples import Message
 
-from faust_avro.asyncio import ConfluentSchemaRegistryClient as CSRC, run_in_thread
-from faust_avro.exceptions import CodecException
+import faust_avro.context as ctx
+from faust_avro.asyncio import run_in_thread
 from faust_avro.record import Record
-from faust_avro.registry import Registry
 
 SchemaID = int
 SubjectT = str
@@ -29,146 +28,168 @@ HEADER = struct.Struct(">bI")
 MAGIC_BYTE = 0
 
 
-@dataclass
-class AvroCodec:
-    record: Record
-    registry: Registry
-    subjects: List[SubjectT] = field(default_factory=list)
-    schema_id: Optional[SchemaID] = None
-    codec: InitVar[Any] = None
-    schema: InitVar[str] = ""
+class Codec(CodecT):
+    def __init__(self, record: Type[Record], **kwargs: Any):
+        if kwargs:
+            raise NotImplementedError("Avro doesn't play nice with others")
+        self.record: Type[Record] = record
+        self.name = f"{self.record.__module__}.{self.record.__name__}"
+        self.schema_id: Optional[int] = None
+        self.versions: Dict[int, str] = dict()
 
-    def __post_init__(self, codec=None, schema=""):
-        self.schema = self.record.to_avro(self.registry)
-        self.codec = fastavro.parse_schema(self.schema)
+    def clone(self, *children: CodecT) -> CodecT:
+        raise NotImplementedError("Avro doesn't play nice with others")
 
-    async def compatible(self, registry: CSRC):
-        schema = json.dumps(self.schema)
-        tasks = [registry.compatible(subject, schema) for subject in self.subjects]
-        compatible = await asyncio.gather(*tasks)
-        failed = [subj for subj, valid in zip(self.subjects, compatible) if not valid]
-        if failed:
-            print(f"{self.record.__module__}.{self.record.__name__} incompatible for: {failed}")
-
-        return all(compatible)
-
-    async def register(self, registry: CSRC):
-        schema = json.dumps(self.schema)
-        tasks = [registry.register(subject, schema) for subject in self.subjects]
-        self.schema_id, *ids = funcy.distinct(await asyncio.gather(*tasks))
-        assert not ids, "Schemas must share the same id across all subjects!"
-        print(f"{self.record.__module__}.{self.record.__name__} registered as schema id {self.schema_id} for: {self.subjects}")
-
-    async def sync(self, registry: CSRC):
-        schema = json.dumps(self.schema)
-        self.schema_id = await registry.sync(self.subjects[0], schema)
-
-    def dumps(self, value: Record) -> bytes:
-        payload = BytesIO()
-        fastavro.schemaless_writer(payload, self.codec, value.to_representation())
-        return payload.getvalue()
-
-    def loads(self, s: bytes) -> Record:
-        return self.record(**fastavro.schemaless_reader(BytesIO(s), self.codec))
-
-
-class AvroCodecDict(dict):
-    # TODO: Replace with functools.cached_property in python 3.8
-    @cached_property
-    def _registry(self):
-        # This handles creating a single Registry instance per AvroSchemaRegistry
-        # instance which also means a single Registry instance per App instance.
-        return Registry()
-
-    def __missing__(self, record: Record):
-        return self.setdefault(record, AvroCodec(record, self._registry))
-
-
-class AvroSchemaRegistry(faust.Schema):
-    def __init__(self, *, registry_url="http://localhost:8081", **kwargs):
-        super().__init__(**kwargs)
-        self.codecs: Dict[Type[Record], AvroCodec] = AvroCodecDict()
-        self.registry: CSRC = CSRC(registry_url)
-
-    def __call__(self, *args, **kwargs):
-        # Normally a class gets passed as the App's Schema parameter.
-        # That doesn't work for avro, so instead of implementing the
-        # borg pattern, we just define __call__ to return ourselves and
-        # ignore any passed arguments.
-        #
-        # If the passed arguments included the topic in addition to the
-        # key and value, then we could do self.define's work here and
-        # wouldn't need to wrap the App's topic method at all.
-        return self
-
-    def __str__(self):  # pragma: no cover
-        return f"<AvroSchemaRegistry registry={self.registry}>"
-
-    def define(self, topics: List[str], subject_type: str, record: Record):
-        subjects = [f"{topic}-{subject_type}" for topic in topics]
-        self.codecs[record].subjects.extend(subjects)
+    def __or__(self, other: Any) -> Any:
+        raise NotImplementedError("Avro doesn't play nice with others")
 
     @funcy.memoize
-    def get_codec_by_id(self, schema_id: SchemaID) -> AvroCodec:
-        for codec in self.codecs.values():
-            # We should do this outside the loop and in parallel. In theory the startup agent should do it but in practice it looks like we receive messages
-            # before that agent has finished running, meaning that we are in an unready state.
-            if codec.schema_id is None:
-                # This is a hack to get around the dropped async context
-                run_in_thread(codec.sync(self.registry))
-            if codec.schema_id == schema_id:
-                return codec
-        else:
-            raise NotImplementedError("Should fetch from schema registry via schema_id")
+    def dict_schema(self, app: AppT) -> Dict[str, Any]:
+        return self.record.to_avro(app.avro_schema_registry.registry)
 
-    async def sync(self):
-        tasks = [codec.sync(self.registry) for codec in self.codecs.values()]
-        await asyncio.gather(*tasks)
+    @funcy.memoize
+    def schema(self, app: AppT) -> str:
+        return json.dumps(self.dict_schema(app))
 
-    async def register(self):
-        compatible = [codec.compatible(self.registry) for codec in self.codecs.values()]
-        if all(await asyncio.gather(*compatible)):
-            tasks = [codec.register(self.registry) for codec in self.codecs.values()]
-            await asyncio.gather(*tasks)
-        else:
-            raise Exception("Incompatible Schemas")
+    def dumps(self, value: V) -> bytes:
+        app = ctx.app.get()
 
-    async def to_avro(self, record: ModelT) -> str:
-        return json.dumps(self.codecs[record].schema)
+        # TODO: get async passed down the faust call stack so that this can
+        # be an await in this loop, rather than using threading to spawn a
+        # new loop and block the main loop on it anyway.
+        if self.schema_id is None:
+            run_in_thread(self.sync(app, ctx.subject.get()))
 
-    def _loads(self, payload: bytes) -> Record:
-        """Decompose a confluent client message into the schema id and payload bytes"""
+        header = HEADER.pack(MAGIC_BYTE, self.schema_id)
+        payload = BytesIO()
+        schema = self.dict_schema(app)
+        fastavro.schemaless_writer(payload, schema, value)
+        return header + payload.getvalue()
 
+    def loads(self, payload: bytes) -> Dict[str, Any]:
+        app = ctx.app.get()
         header, payload = payload[:5], payload[5:]
         magic, schema_id = HEADER.unpack(header)
 
         if magic != MAGIC_BYTE:
-            raise CodecException(f"Bad magic byte: {magic}.")
+            raise faust.exceptions.ValueDecodeError(f"Bad magic byte: {magic}.")
 
-        return self.get_codec_by_id(schema_id).loads(payload)
+        # TODO: get async passed down the faust call stack so that this can
+        # be an await in this loop, rather than using threading to spawn a
+        # new loop and block the main loop on it anyway.
+        if self.schema_id is None:
+            run_in_thread(self.sync(app, ctx.subject.get()))
 
-    def _dumps(self, data: Record) -> bytes:
-        """Dump the schema id and payload into a confluent client message."""
+        if schema_id != self.schema_id:
+            # TODO: get async passed down the faust call stack so that this can
+            # be an await in this loop, rather than using threading to spawn a
+            # new loop and block the main loop on it anyway.
+            if schema_id not in self.versions:
+                run_in_thread(self.schema_by_id(app, schema_id))
 
-        codec = self.codecs[type(data)]
-        if codec.schema_id is None:
-            # This is a hack to get around the dropped async context
-            run_in_thread(codec.sync(self.registry))
-        header = HEADER.pack(MAGIC_BYTE, codec.schema_id)
-        return header + codec.dumps(data)
+            return fastavro.schemaless_reader(
+                BytesIO(payload), self.versions[schema_id], self.dict_schema(app)
+            )
 
-    def loads_key(self, app: AppT, message: Message, **kwargs) -> KT:
-        # TODO -- should we raise error if kwargs is not empty?
-        return cast(KT, None if message.key is None else self._loads(message.key))
+        return fastavro.schemaless_reader(BytesIO(payload), self.dict_schema(app))
 
-    def loads_value(self, app: AppT, message: Message, **kwargs) -> VT:
-        # TODO -- should we raise error if kwargs is not empty?
-        return cast(VT, None if message.value is None else self._loads(message.value))
+    async def schema_by_id(self, app: AppT, schema_id: SchemaID) -> None:
+        self.versions[schema_id] = json.loads(
+            await app.avro_schema_registry.schema_by_id(schema_id)
+        )
+
+    async def compatible(self, app: AppT, subject: SubjectT) -> bool:
+        ok = await app.avro_schema_registry.compatible(subject, self.schema(app))
+        if not ok:
+            print(f"{self.name} is compatible with {subject}.")
+        return ok
+
+    async def register(self, app: AppT, subject: SubjectT) -> None:
+        schema_id = await app.avro_schema_registry.register(subject, self.schema(app))
+        print(f"{self.name} registered as schema id {schema_id} on {subject}")
+
+    async def sync(self, app: AppT, subject: SubjectT) -> None:
+        self.schema_id = await app.avro_schema_registry.sync(subject, self.schema(app))
+
+
+class Schema(faust.Schema):
+    """An avro compatible faust Schema."""
+
+    def update(
+        self,
+        *,
+        key_type: ModelArg = None,
+        value_type: ModelArg = None,
+        key_serializer: CodecArg = None,
+        value_serializer: CodecArg = None,
+        allow_empty: bool = None,
+    ) -> None:
+        if key_type is not None and issubclass(key_type, Record):
+            key_serializer = Codec(key_type)
+        if value_type is not None and issubclass(value_type, Record):
+            value_serializer = Codec(value_type)
+        super().update(
+            key_type=key_type,
+            value_type=value_type,
+            key_serializer=key_serializer,
+            value_serializer=value_serializer,
+            allow_empty=allow_empty,
+        )
+
+    def _spray(self, app: AppT, topic: TopicT, method) -> Iterator[Awaitable[Any]]:
+        for topic_name in topic.topics:
+            if self.key_serializer is not None:
+                yield method(self.key_serializer, app, f"{topic_name}-key")
+            if self.value_serializer is not None:
+                yield method(self.value_serializer, app, f"{topic_name}-value")
+
+    async def compatible(self, app: AppT, topic: TopicT) -> List[bool]:
+        return await asyncio.gather(*list(self._spray(app, topic, Codec.compatible)))
+
+    async def register(self, app: AppT, topic: TopicT) -> None:
+        return await asyncio.gather(*list(self._spray(app, topic, Codec.register)))
+
+    async def sync(self, app: AppT, topic: TopicT) -> None:
+        return await asyncio.gather(*list(self._spray(app, topic, Codec.sync)))
+
+    @contextlib.contextmanager
+    def context(self, app: AppT, subject: SubjectT):
+        with ctx.context(ctx.app, app), ctx.context(ctx.subject, subject):
+            yield
+
+    def loads_key(
+        self,
+        app: AppT,
+        message: Message,
+        *,
+        loads: Callable = None,
+        serializer: CodecArg = None,
+    ) -> KT:
+        with self.context(app, f"{message.topic}-key"):
+            return super().loads_key(app, message, loads=loads, serializer=serializer)
+
+    def loads_value(
+        self,
+        app: AppT,
+        message: Message,
+        *,
+        loads: Callable = None,
+        serializer: CodecArg = None,
+    ) -> VT:
+        with self.context(app, f"{message.topic}-value"):
+            return super().loads_value(app, message, loads=loads, serializer=serializer)
 
     def dumps_key(
-        self, app: AppT, key: K, *, serializer: CodecArg = None, headers: OpenHeadersArg
+        self,
+        app: AppT,
+        key: K,
+        *,
+        serializer: CodecArg = None,
+        headers: OpenHeadersArg,
     ) -> Tuple[Any, OpenHeadersArg]:
-        return self._dumps(cast(Record, key)), headers
+        topic_name, *_ = ctx.topic.get().topics
+        with self.context(app, f"{topic_name}-key"):
+            return super().dumps_key(app, key, serializer=serializer, headers=headers)
 
     def dumps_value(
         self,
@@ -178,4 +199,8 @@ class AvroSchemaRegistry(faust.Schema):
         serializer: CodecArg = None,
         headers: OpenHeadersArg,
     ) -> Tuple[Any, OpenHeadersArg]:
-        return self._dumps(cast(Record, value)), headers
+        topic_name, *_ = ctx.topic.get().topics
+        with self.context(app, f"{topic_name}-value"):
+            return super().dumps_value(
+                app, value, serializer=serializer, headers=headers
+            )

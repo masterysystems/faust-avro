@@ -5,7 +5,7 @@ interactions:
       Content-Type:
       - application/vnd.schemaregistry.v1+json
     method: POST
-    uri: http://localhost:8081/subjects/test_registered/versions
+    uri: http://localhost:8081/subjects/test_self_compatible/versions
   response:
     body:
       string: '{"id":1}'
@@ -18,20 +18,20 @@ interactions:
     status:
       code: 200
       message: OK
-    url: http://localhost:8081/subjects/test_registered/versions
+    url: http://localhost:8081/subjects/test_self_compatible/versions
 - request:
     body: null
     headers:
       Content-Type:
       - application/vnd.schemaregistry.v1+json
     method: POST
-    uri: http://localhost:8081/subjects/test_registered
+    uri: http://localhost:8081/compatibility/subjects/test_self_compatible/versions/latest
   response:
     body:
-      string: '{"subject":"test_registered","version":1,"id":1,"schema":"{\"type\":\"record\",\"name\":\"UnitTest\",\"fields\":[{\"name\":\"field\",\"type\":\"string\"}]}"}'
+      string: '{"is_compatible":true}'
     headers:
       Content-Encoding: gzip
-      Content-Length: '130'
+      Content-Length: '42'
       Content-Type: application/vnd.schemaregistry.v1+json
       Date: Sat, 30 Nov 2019 00:46:45 GMT
       Server: Jetty(9.4.18.v20190429)
@@ -39,5 +39,5 @@ interactions:
     status:
       code: 200
       message: OK
-    url: http://localhost:8081/subjects/test_registered
+    url: http://localhost:8081/compatibility/subjects/test_self_compatible/versions/latest
 version: 1

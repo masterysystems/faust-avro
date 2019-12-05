@@ -5,7 +5,7 @@ interactions:
       Content-Type:
       - application/vnd.schemaregistry.v1+json
     method: POST
-    uri: http://localhost:8081/subjects/test_unregistered
+    uri: http://localhost:8081/subjects/test_sync_no_subject
   response:
     body:
       string: '{"error_code":40401,"message":"Subject not found."}'
@@ -17,5 +17,5 @@ interactions:
     status:
       code: 404
       message: Not Found
-    url: http://localhost:8081/subjects/test_unregistered
+    url: http://localhost:8081/subjects/test_sync_no_subject
 version: 1

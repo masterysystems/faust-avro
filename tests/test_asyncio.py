@@ -1,8 +1,14 @@
 import json
+import threading
 
 import pytest
 from assertpy import add_extension, assert_that
-from faust_avro.asyncio import ConfluentSchemaRegistryClient
+from faust_avro.asyncio import (
+    ConfluentSchemaRegistryClient,
+    SchemaNotFound,
+    SubjectNotFound,
+    run_in_thread,
+)
 
 
 @pytest.fixture
@@ -54,6 +60,16 @@ def my_extensions():
     add_extension(is_same_schema)
 
 
+def test_run_in_thread():
+    event = threading.Event()
+
+    async def set_event():
+        event.set()
+
+    run_in_thread(set_event())
+    assert_that(event).has_is_set(True)
+
+
 @pytest.mark.asyncio
 @pytest.mark.vcr()
 async def test_register(client, avro_schema, subject="test_register"):
@@ -81,11 +97,32 @@ async def test_unregistered(client, avro_schema, subject="test_unregistered"):
 
 @pytest.mark.asyncio
 @pytest.mark.vcr()
-async def test_compatible(
-    client, avro_schema, avro_schema_compatible, subject="test_compatible"
+async def test_sync_no_subject(client, avro_schema, subject="test_sync_no_subject"):
+    with pytest.raises(SubjectNotFound):
+        await client.sync(subject, avro_schema)
+
+
+@pytest.mark.asyncio
+@pytest.mark.vcr()
+async def test_sync_no_schema(
+    client, avro_schema, avro_schema_compatible, subject="test_sync_no_schema"
 ):
     await client.register(subject, avro_schema)
-    assert_that(await client.compatible(subject, avro_schema_compatible)).is_true()
+    with pytest.raises(SchemaNotFound):
+        await client.sync(subject, avro_schema_compatible)
+
+
+@pytest.mark.asyncio
+@pytest.mark.vcr()
+async def test_compatible(client, avro_schema, subject="test_compatible"):
+    assert_that(await client.compatible(subject, avro_schema)).is_true()
+
+
+@pytest.mark.asyncio
+@pytest.mark.vcr()
+async def test_self_compatible(client, avro_schema, subject="test_self_compatible"):
+    await client.register(subject, avro_schema)
+    assert_that(await client.compatible(subject, avro_schema)).is_true()
 
 
 @pytest.mark.asyncio

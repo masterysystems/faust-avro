@@ -12,7 +12,7 @@ interactions:
     headers:
       Content-Length: '8'
       Content-Type: application/vnd.schemaregistry.v1+json
-      Date: Tue, 05 Nov 2019 16:05:46 GMT
+      Date: Sat, 30 Nov 2019 00:46:45 GMT
       Server: Jetty(9.4.18.v20190429)
       Vary: Accept-Encoding, User-Agent
     status:
@@ -33,7 +33,7 @@ interactions:
       Content-Encoding: gzip
       Content-Length: '129'
       Content-Type: application/vnd.schemaregistry.v1+json
-      Date: Tue, 05 Nov 2019 16:05:47 GMT
+      Date: Sat, 30 Nov 2019 00:46:45 GMT
       Server: Jetty(9.4.18.v20190429)
       Vary: Accept-Encoding, User-Agent
     status:
@@ -47,12 +47,12 @@ interactions:
     uri: http://localhost:8081/subjects
   response:
     body:
-      string: '["test_register"]'
+      string: '["test_sync_no_schema","test_register","test_incompatible","test_registered","test_self_compatible"]'
     headers:
       Content-Encoding: gzip
-      Content-Length: '37'
+      Content-Length: '80'
       Content-Type: application/vnd.schemaregistry.v1+json
-      Date: Tue, 05 Nov 2019 16:05:47 GMT
+      Date: Sat, 30 Nov 2019 00:46:45 GMT
       Server: Jetty(9.4.18.v20190429)
       Vary: Accept-Encoding, User-Agent
     status:
@@ -71,7 +71,7 @@ interactions:
       Content-Encoding: gzip
       Content-Length: '99'
       Content-Type: application/vnd.schemaregistry.v1+json
-      Date: Tue, 05 Nov 2019 16:05:47 GMT
+      Date: Sat, 30 Nov 2019 00:46:45 GMT
       Server: Jetty(9.4.18.v20190429)
       Vary: Accept-Encoding, User-Agent
     status:
@@ -90,7 +90,7 @@ interactions:
       Content-Encoding: gzip
       Content-Length: '129'
       Content-Type: application/vnd.schemaregistry.v1+json
-      Date: Tue, 05 Nov 2019 16:05:47 GMT
+      Date: Sat, 30 Nov 2019 00:46:45 GMT
       Server: Jetty(9.4.18.v20190429)
       Vary: Accept-Encoding, User-Agent
     status:
