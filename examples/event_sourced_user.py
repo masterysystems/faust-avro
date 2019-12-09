@@ -53,8 +53,12 @@ class UpdatedEmail(Record, coerce=True):
     new_email: str
 
 
+class UserDeleted(Record, coerce=True):
+    email: str
+
+
 class UserRequest(Record, coerce=True):
-    update: typing.Union[UserCreated, NameChanged, UpdatedEmail]
+    update: typing.Union[UserCreated, NameChanged, UpdatedEmail, UserDeleted]
 
 
 ##############################################################################
@@ -104,9 +108,21 @@ def updated_email(msg: UpdatedEmail):
     if msg.new_email in users_table:
         raise UserExistsError(f"User with {msg.new_email} already exists.")
     user = users_table[msg.old_email]
-    del users_table[msg.old_email]
     user.email = msg.new_email
     users_table[msg.new_email] = user
+    # This is subtle. We jump from the agent for partition new_email over to
+    # the agent for partition old_email and request a delete there. For a
+    # short time, the user will exist under both email addresses.
+    await users_requests.send(
+        key=UserKey(msg.old_email), value=UserRequest(UserDeleted(msg.old_email))
+    )
+
+
+@update_handler.register
+def deleted_email(msg: UserDeleted):
+    if msg.email not in users_table:
+        raise UserDoesNotExistError(f"User with {msg.email} does not exist.")
+    del users_table[msg.email]
 
 
 ##############################################################################
@@ -180,15 +196,15 @@ class users_update(faust.web.View):
     ) -> faust.web.Response:
         """Update a specific user"""
         data = await request.json()
-        key = UserKey(email)
         if "name" in data:
             update = NameChanged(email, data["name"])
         elif "new_email" in data:
             update = UpdatedEmail(email, data["new_email"])
+            # Note this re-routes what partition we'll send on
             email = data["new_email"]
         else:
             raise aiohttp.web.HTTPBadRequest()
-        response = await users_svc.ask(key=key, value=UserRequest(update))
+        response = await users_svc.ask(key=UserKey(email), value=UserRequest(update))
         if response == 200:
             return self.json(dict(user=users_table[email].asdict()))
         elif response == 404:
