@@ -63,6 +63,7 @@ class Codec(CodecT):
         header = HEADER.pack(MAGIC_BYTE, self.schema_id)
         payload = BytesIO()
         schema = self.dict_schema(app)
+
         fastavro.schemaless_writer(payload, schema, value)
         return header + payload.getvalue()
 
