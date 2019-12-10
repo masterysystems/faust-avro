@@ -80,12 +80,12 @@ users_table = app.GlobalTable("users_table", partitions=4)
 # Business logic
 ##############################################################################
 @functools.singledispatch
-def update_handler(msg: typing.Any):
+async def update_handler(msg: typing.Any):
     raise NotImplementedError(f"No handler for {msg}")
 
 
 @update_handler.register
-def user_created(msg: UserCreated):
+async def user_created(msg: UserCreated):
     email = msg.user.email
     if email in users_table:
         raise UserExistsError(f"User with {email} already exists.")
@@ -93,14 +93,14 @@ def user_created(msg: UserCreated):
 
 
 @update_handler.register
-def name_changed(msg: NameChanged):
+async def name_changed(msg: NameChanged):
     user = users_table[msg.email]
     user.name = msg.name
     users_table[msg.email] = user
 
 
 @update_handler.register
-def updated_email(msg: UpdatedEmail):
+async def updated_email(msg: UpdatedEmail):
     if msg.old_email == msg.new_email:
         pass
     if msg.old_email not in users_table:
@@ -119,7 +119,7 @@ def updated_email(msg: UpdatedEmail):
 
 
 @update_handler.register
-def deleted_email(msg: UserDeleted):
+async def deleted_email(msg: UserDeleted):
     if msg.email not in users_table:
         raise UserDoesNotExistError(f"User with {msg.email} does not exist.")
     del users_table[msg.email]
@@ -132,7 +132,7 @@ def deleted_email(msg: UserDeleted):
 async def users_svc(requests):
     async for key, value in requests.items():
         try:
-            update_handler(value.update)
+            await update_handler(value.update)
             await cleaned_users_requests.send(key=key, value=value)
             yield 200  # OK
         except UserExistsError:
