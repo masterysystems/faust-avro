@@ -21,7 +21,7 @@ class Listy(Record, coerce=True):
 
 
 class Nasty(Record, coerce=True):
-    choices: Union[Inner, Outer, int]
+    choices: Union[Inner, Outer]
 
 
 @pytest.mark.parametrize(
@@ -32,7 +32,6 @@ class Nasty(Record, coerce=True):
         Listy([Inner("one"), Inner("two")]),
         Nasty(Inner("nested")),
         Nasty(Outer(1, Inner("double nested"))),
-        Nasty(1),
     ],
 )
 def test_records(app, record):
