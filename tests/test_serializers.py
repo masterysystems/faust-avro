@@ -1,3 +1,4 @@
+import json
 from datetime import datetime, timezone
 
 from faust.exceptions import ValueDecodeError
@@ -7,7 +8,6 @@ import pytest
 from assertpy import assert_that
 from faust_avro import Record
 from faust_avro import context as ctx
-from faust_avro.serializers import Codec
 
 
 class Key(Record):
@@ -29,17 +29,6 @@ def topic(app):
         yield t
         t.schema.key_serializer.schema_id = None
         t.schema.value_serializer.schema_id = None
-
-
-def test_codec_not_implemented():
-    with pytest.raises(NotImplementedError):
-        Codec(Person, kwargs=True)
-
-    c = Codec(Person)
-    with pytest.raises(NotImplementedError):
-        c.clone()
-    with pytest.raises(NotImplementedError):
-        c | True
 
 
 def test_key_serde(app, topic):
@@ -66,3 +55,15 @@ def test_garbage(app, topic):
     message = Message("ut-topic", 0, 0, 0, 0, None, None, b"failure", None)
     with pytest.raises(ValueDecodeError):
         topic.schema.loads_value(app, message)
+
+
+def test_schema(app, topic):
+    key = json.dumps(
+        dict(
+            type="record",
+            name="test_serializers.Key",
+            aliases=["Key"],
+            fields=[dict(type="long", name="idx")],
+        )
+    )
+    assert_that(topic.schema.key_serializer.schema(app)).is_equal_to(key)

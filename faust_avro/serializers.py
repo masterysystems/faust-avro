@@ -1,5 +1,7 @@
 import asyncio
+import collections.abc
 import contextlib
+import functools
 import json
 import struct
 from io import BytesIO
@@ -8,9 +10,10 @@ from typing import Any, Awaitable, Callable, Dict, Iterator, List, Optional, Tup
 import fastavro
 import faust
 import funcy
+from faust.serializers import codecs
 from faust.types import TopicT
 from faust.types.app import AppT
-from faust.types.codecs import CodecArg, CodecT
+from faust.types.codecs import CodecArg
 from faust.types.core import K, OpenHeadersArg, V
 from faust.types.models import ModelArg
 from faust.types.serializers import KT, VT
@@ -28,20 +31,35 @@ HEADER = struct.Struct(">bI")
 MAGIC_BYTE = 0
 
 
-class Codec(CodecT):
+@functools.singledispatch
+def faust_annotate(value) -> Any:
+    # Ensure that the whole value tree structure has been pushed through
+    # to_representation() so that we aren't passing Record subclass instances
+    # to fastavro.
+    try:
+        return faust_annotate(value.to_representation())
+    except AttributeError:
+        return value
+
+
+@faust_annotate.register
+def faust_annotate_dict(value: collections.abc.Mapping) -> collections.abc.Mapping:
+    return dict([(k, faust_annotate(v)) for k, v in value.items()])
+
+
+@faust_annotate.register(set)
+@faust_annotate.register
+def faust_annotate_list(value: list) -> list:
+    return list([faust_annotate(item) for item in value])
+
+
+class Codec(codecs.Codec):
     def __init__(self, record: Type[Record], **kwargs: Any):
-        if kwargs:
-            raise NotImplementedError("Avro doesn't play nice with others")
+        super().__init__(**kwargs)
         self.record: Type[Record] = record
         self.name = f"{self.record.__module__}.{self.record.__name__}"
         self.schema_id: Optional[int] = None
         self.versions: Dict[int, str] = dict()
-
-    def clone(self, *children: CodecT) -> CodecT:
-        raise NotImplementedError("Avro doesn't play nice with others")
-
-    def __or__(self, other: Any) -> Any:
-        raise NotImplementedError("Avro doesn't play nice with others")
 
     @funcy.memoize
     def dict_schema(self, app: AppT) -> Dict[str, Any]:
@@ -51,7 +69,7 @@ class Codec(CodecT):
     def schema(self, app: AppT) -> str:
         return json.dumps(self.dict_schema(app))
 
-    def dumps(self, value: V) -> bytes:
+    def _dumps(self, value: V) -> bytes:
         app = ctx.app.get()
 
         # TODO: get async passed down the faust call stack so that this can
@@ -64,10 +82,10 @@ class Codec(CodecT):
         payload = BytesIO()
         schema = self.dict_schema(app)
 
-        fastavro.schemaless_writer(payload, schema, value)
+        fastavro.schemaless_writer(payload, schema, faust_annotate(value))
         return header + payload.getvalue()
 
-    def loads(self, payload: bytes) -> Dict[str, Any]:
+    def _loads(self, payload: bytes) -> Any:
         app = ctx.app.get()
         header, payload = payload[:5], payload[5:]
         magic, schema_id = HEADER.unpack(header)
@@ -89,10 +107,15 @@ class Codec(CodecT):
                 run_in_thread(self.schema_by_id(app, schema_id))
 
             return fastavro.schemaless_reader(
-                BytesIO(payload), self.versions[schema_id], self.dict_schema(app)
+                BytesIO(payload),
+                self.versions[schema_id],
+                self.dict_schema(app),
+                return_record_name=True,
             )
 
-        return fastavro.schemaless_reader(BytesIO(payload), self.dict_schema(app))
+        return fastavro.schemaless_reader(
+            BytesIO(payload), self.dict_schema(app), return_record_name=True
+        )
 
     async def schema_by_id(self, app: AppT, schema_id: SchemaID) -> None:
         self.versions[schema_id] = json.loads(
