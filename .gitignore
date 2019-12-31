@@ -173,3 +173,4 @@ pip-selfcheck.json
 # End of https://www.gitignore.io/api/vim,python,virtualenv,visualstudiocode
 
 pytest.xml
+.envrc
