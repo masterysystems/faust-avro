@@ -6,8 +6,13 @@ from faust_avro.exceptions import (
     UnknownTypeError,
 )
 from faust_avro.record import Record
+from faust_avro.types import datetime_millis, float32, int32, time_millis
 
 __all__ = [
+    "int32",
+    "float32",
+    "time_millis",
+    "datetime_millis",
     "App",
     "CodecException",
     "Record",
