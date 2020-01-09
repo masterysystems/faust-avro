@@ -93,6 +93,21 @@ class LogicalType(Schema):
 
 
 @dataclass
+class DecimalLogicalType(LogicalType):
+    """A LogicalType that supports the decimal precision and scale arguments."""
+
+    precision: int
+    scale: Optional[int] = None
+
+    def _to_avro(self, visited: VisitedT) -> AvroSchemaT:
+        schema = super()._to_avro(visited)
+        schema["precision"] = self.precision
+        if self.scale is not None:
+            schema["scale"] = self.scale
+        return schema
+
+
+@dataclass
 class Primitive(Schema):
     """Primitive avro types: https://avro.apache.org/docs/current/spec.html#schema_primitive"""
 

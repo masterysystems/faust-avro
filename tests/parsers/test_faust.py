@@ -1,8 +1,11 @@
 from datetime import date, datetime, time
+from decimal import Decimal
 from enum import Enum
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 from uuid import UUID
+
+from faust.models.fields import DecimalField
 
 import pytest
 from assertpy import assert_that
@@ -23,6 +26,7 @@ from faust_avro.schema import (
     AvroMap,
     AvroRecord,
     AvroUnion,
+    DecimalLogicalType,
     LogicalType,
 )
 from faust_avro.types import datetime_millis, float32, int32, time_millis
@@ -55,6 +59,8 @@ def test_faust(registry):
         counts: Dict[str, int]
         numeric: Union[int, float]
         # Logical Types
+        many_digits: Decimal
+        usd: Decimal = DecimalField(max_digits=20, max_decimal_places=2)
         calendar_date: date
         daily_time: time
         daily_time_millis: time_millis
@@ -107,6 +113,18 @@ def test_faust(registry):
             AvroField(name="counts", type=AvroMap(LONG)),
             AvroField(name="numeric", type=AvroUnion([LONG, DOUBLE])),
             # Logical Types
+            AvroField(
+                name="many_digits",
+                type=DecimalLogicalType(
+                    schema=BYTES, logical_type="decimal", precision=28
+                ),
+            ),
+            AvroField(
+                name="usd",
+                type=DecimalLogicalType(
+                    schema=BYTES, logical_type="decimal", precision=22, scale=2
+                ),
+            ),
             AvroField(
                 name="calendar_date", type=LogicalType(logical_type="date", schema=INT)
             ),
