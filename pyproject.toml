@@ -16,7 +16,7 @@ classifiers = [
 python = "^3.7"
 aiohttp = "^3.6"
 fastavro = "^0.22.5"
-faust = "^1.7"
+faust = "^1.10"
 funcy = "^1.13"
 typing-inspect = "^0.5.0"
 
