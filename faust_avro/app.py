@@ -40,10 +40,3 @@ class App(faust.App):
                 _.say(record.to_avro(_.app.avro_schema_registry.registry))
             else:
                 raise click.Abort(f"{model} is not an avro-based Record.")
-
-    def agent(self, *args, **kwargs):
-        # Faust will by default try to wrap the record we're sending in a response
-        # request record, which is not registered with the topic's schema. This
-        # nudges the agents to use kafka headers instead.
-        kwargs.setdefault("use_reply_headers", True)
-        return super().agent(*args, **kwargs)
