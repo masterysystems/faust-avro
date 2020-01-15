@@ -9,6 +9,11 @@ import typing
 
 import aiohttp.web
 import faust
+import strawberry
+import strawberry.asgi.http
+import strawberry.asgi.utils
+import strawberry.graphql
+import strawberry.types.datetime
 
 from faust_avro import App, Record
 
@@ -65,7 +70,7 @@ class UserRequest(Record, coerce=True):
 # App
 ##############################################################################
 app = App(
-    "users", broker="kafka://localhost", reply_create_topic=True, topic_partitions=4
+    "users", broker="kafka://localhost", reply_create_topic=True, topic_partitions=1
 )
 users_requests = app.topic(
     "_users_requests", key_type=UserKey, value_type=UserRequest, internal=True
@@ -73,7 +78,7 @@ users_requests = app.topic(
 cleaned_users_requests = app.topic(
     "users", key_type=UserKey, value_type=UserRequest, internal=True
 )
-users_table = app.GlobalTable("users_table", partitions=4)
+users_table = app.Table("users_table", partitions=1)
 
 
 ##############################################################################
@@ -155,7 +160,7 @@ async def cleaned_users_requests(requests):
 
 
 ##############################################################################
-# Web
+# RESTish
 ##############################################################################
 @app.page("/users")
 class users(faust.web.View):
@@ -213,3 +218,103 @@ class users_update(faust.web.View):
             raise aiohttp.web.HTTPConflict()
         else:
             raise aiohttp.web.HTTPInternalServerError()
+
+
+##############################################################################
+# GraphQLish
+##############################################################################
+@strawberry.type
+class UserType:
+    email: str
+    name: str
+    joined: strawberry.types.datetime.DateTime
+
+
+@strawberry.type
+class Query:
+    @strawberry.field
+    def users(self, info, email: str = None) -> typing.List[UserType]:
+        if email is not None:
+            return [users_table[email]]
+        else:
+            return list(users_table.values())
+
+
+@strawberry.input
+class CreateUserInput:
+    email: str
+    name: str
+
+
+@strawberry.input
+class ChangeUserNameInput:
+    email: str
+    name: str
+
+
+@strawberry.input
+class ChangeUserEmailInput:
+    old_email: str
+    new_email: str
+
+
+@strawberry.type
+class Mutation:
+    @staticmethod
+    async def ask(email, message):
+        response = await users_svc.ask(key=UserKey(email), value=UserRequest(message))
+        if response == 200:
+            return
+        else:
+            raise Exception("Failure")
+
+    @strawberry.mutation
+    async def create_user(self, info, input: CreateUserInput) -> UserType:
+        user = User(email=input.email, name=input.name, joined=datetime.datetime.now())
+        await Mutation.ask(input.email, UserCreated(user))
+        return user
+
+    @strawberry.mutation
+    async def change_user_name(self, info, input: ChangeUserNameInput) -> UserType:
+        await Mutation.ask(input.email, NameChanged(input.email, input.name))
+        return users_table[input.email]
+
+    @strawberry.mutation
+    async def change_user_email(self, info, input: ChangeUserEmailInput) -> UserType:
+        await Mutation.ask(
+            input.new_email, UpdatedEmail(input.old_email, input.new_email)
+        )
+        return users_table[input.new_email]
+
+
+schema = strawberry.Schema(query=Query, mutation=Mutation)
+
+
+# TODO -- routing! Currently this abuses partitions=1 and workers=1 to have consistency.
+#
+# Routing is a lot harder in graphql. It potentially needs to happen at the mutation level?
+# It'd be worth investigating if the response could be the user object itself and/or an
+# exception object. Serializing them with pickle would be okay since it is python/faust
+# internal and not intended for outside consumption.
+@app.page("/graphql")
+class graphql(faust.web.View):
+    async def get(self, request: faust.web.Request) -> faust.web.Response:
+        html = strawberry.asgi.utils.get_playground_html(
+            "http://localhost:6066/graphql"
+        )
+        return aiohttp.web.Response(body=html, content_type="text/html")
+
+    async def execute(self, query, variables=None, context=None, operation_name=None):
+        return await strawberry.graphql.execute(
+            schema,
+            query,
+            variable_values=variables,
+            operation_name=operation_name,
+            context_value=context,
+        )
+
+    async def post(self, request: faust.web.Request) -> faust.web.Response:
+        response = await strawberry.asgi.http.get_http_response(request, self.execute)
+        return aiohttp.web.Response(
+            body=response.body, content_type=response.media_type
+        )
