@@ -12,6 +12,7 @@ from faust_avro.schema import (
     BOOL,
     BYTES,
     DOUBLE,
+    FLOAT,
     INT,
     LONG,
     NULL,
@@ -24,6 +25,7 @@ from faust_avro.schema import (
     AvroUnion,
     LogicalType,
 )
+from faust_avro.types import datetime_millis, float32, int32, time_millis
 
 
 class Colors(Enum):
@@ -41,8 +43,10 @@ def test_faust(registry):
 
         # Primitive types
         boolean: bool
-        integer: int
-        floating_pt: float
+        integer: int32
+        longint: int
+        floating_pt: float32
+        double: float
         byte_string: bytes
         text_string: str
         # Complex types
@@ -53,7 +57,9 @@ def test_faust(registry):
         # Logical Types
         calendar_date: date
         daily_time: time
+        daily_time_millis: time_millis
         timestamp: datetime
+        timestamp_millis: datetime_millis
         uuid: UUID
         # Pythonic types
         optional: Optional[str]  # Faust auto-defaults this to None.
@@ -81,8 +87,10 @@ def test_faust(registry):
         fields=[
             # Primitives
             AvroField(name="boolean", type=BOOL),
-            AvroField(name="integer", type=LONG),
-            AvroField(name="floating_pt", type=DOUBLE),
+            AvroField(name="integer", type=INT),
+            AvroField(name="longint", type=LONG),
+            AvroField(name="floating_pt", type=FLOAT),
+            AvroField(name="double", type=DOUBLE),
             AvroField(name="byte_string", type=BYTES),
             AvroField(name="text_string", type=STRING),
             # Complex
@@ -107,8 +115,16 @@ def test_faust(registry):
                 type=LogicalType(logical_type="time-micros", schema=LONG),
             ),
             AvroField(
+                name="daily_time_millis",
+                type=LogicalType(logical_type="time-millis", schema=INT),
+            ),
+            AvroField(
                 name="timestamp",
                 type=LogicalType(logical_type="timestamp-micros", schema=LONG),
+            ),
+            AvroField(
+                name="timestamp_millis",
+                type=LogicalType(logical_type="timestamp-millis", schema=LONG),
             ),
             AvroField(
                 name="uuid", type=LogicalType(logical_type="uuid", schema=STRING)

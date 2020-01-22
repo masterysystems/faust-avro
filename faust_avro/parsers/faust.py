@@ -22,6 +22,9 @@ from faust_avro.schema import (
     LogicalType,
     Schema,
 )
+from faust_avro.types import datetime_millis, time_millis
+
+LOGICAL_TYPES = (date, time, time_millis, datetime, datetime_millis, UUID)
 
 
 def parse(registry: Any, model: Any, namespace="") -> Schema:
@@ -33,7 +36,7 @@ def parse(registry: Any, model: Any, namespace="") -> Schema:
         schema = registry[model]
     elif isinstance(model, type) and issubclass(model, Record):
         schema = parse_record(registry, model, namespace)
-    elif model in [date, time, datetime, UUID]:
+    elif model in LOGICAL_TYPES:
         schema = parse_logical(registry, model, namespace)
     elif isinstance(model, EnumMeta):
         schema = parse_enum(registry, model, namespace)
@@ -124,15 +127,16 @@ def parse_mapping(registry: Any, model: Any, namespace: str) -> Schema:
     return AvroMap(values=parse(registry, value, namespace))
 
 
+LOGICAL = {
+    date: LogicalType(logical_type="date", schema=INT),
+    time: LogicalType(logical_type="time-micros", schema=LONG),
+    time_millis: LogicalType(logical_type="time-millis", schema=INT),
+    datetime: LogicalType(logical_type="timestamp-micros", schema=LONG),
+    datetime_millis: LogicalType(logical_type="timestamp-millis", schema=LONG),
+    UUID: LogicalType(logical_type="uuid", schema=STRING),
+}
+
+
 def parse_logical(registry: Any, model: Any, namespace: str) -> Schema:
     """Parse a python type which maps to an avro logical type."""
-    if model == date:
-        schema = LogicalType(logical_type="date", schema=INT)
-    elif model == time:
-        schema = LogicalType(logical_type="time-micros", schema=LONG)
-    elif model == datetime:
-        schema = LogicalType(logical_type="timestamp-micros", schema=LONG)
-    elif model == UUID:
-        schema = LogicalType(logical_type="uuid", schema=STRING)
-
-    return schema
+    return LOGICAL[model]

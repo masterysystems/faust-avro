@@ -11,6 +11,8 @@ from enum import Enum
 from importlib import import_module
 from typing import Any, Iterable, List, Optional, Set
 
+from faust_avro.types import float32, int32
+
 __all__ = [
     # Types
     "AvroSchemaT",
@@ -105,9 +107,9 @@ class Primitive(Schema):
 
 NULL = Primitive("null", type(None))
 BOOL = Primitive("boolean", bool)
-INT = Primitive("int", int)
+INT = Primitive("int", int32)
 LONG = Primitive("long", int)
-FLOAT = Primitive("float", float)
+FLOAT = Primitive("float", float32)
 DOUBLE = Primitive("double", float)
 BYTES = Primitive("bytes", bytes)
 STRING = Primitive("string", str)
