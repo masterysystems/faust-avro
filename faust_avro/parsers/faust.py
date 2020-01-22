@@ -1,15 +1,17 @@
 import collections.abc
+import decimal
 from datetime import date, datetime, time
 from enum import EnumMeta
 from typing import Any, Type, Union
 from uuid import UUID
 
 import funcy
-from faust.models.fields import FieldDescriptor
+from faust.models.fields import DecimalField, FieldDescriptor
 
 from faust_avro.exceptions import UnknownTypeError
 from faust_avro.record import Record
 from faust_avro.schema import (
+    BYTES,
     INT,
     LONG,
     STRING,
@@ -19,6 +21,7 @@ from faust_avro.schema import (
     AvroMap,
     AvroRecord,
     AvroUnion,
+    DecimalLogicalType,
     LogicalType,
     Schema,
 )
@@ -71,7 +74,17 @@ def parse_record(registry: Any, model: Type[Record], namespace: str) -> Schema:
 
 def parse_field(registry: Any, model: FieldDescriptor, namespace: str) -> Schema:
     """Parse a faust record's fields into avro fields."""
-    schema = parse(registry, model.type, namespace)
+    if isinstance(model, DecimalField):
+        if model.max_digits is not None or model.max_decimal_places is not None:
+            precision = (model.max_digits or 0) + (model.max_decimal_places or 0)
+        else:
+            precision = decimal.getcontext().prec
+        scale = model.max_decimal_places
+        schema = DecimalLogicalType(
+            schema=BYTES, logical_type="decimal", precision=precision, scale=scale
+        )
+    else:
+        schema = parse(registry, model.type, namespace)
 
     if model.required:
         return AvroField(model.field, schema)
