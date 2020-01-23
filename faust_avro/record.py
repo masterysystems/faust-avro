@@ -8,6 +8,22 @@ from typing_inspect import is_union_type
 def faust_annotate(data):
     # Translate from avro's named union records which returns (branch name, value)
     # to faust's {..., "__faust": {"ns": branch name}}.
+    #
+    # This function receives data from fastavro. We could get:
+    # - a primitive, eg "a happy string"
+    # - a union branch of a primitive, eg (str, "another string")
+    # - a union branch of a record, eg ("avro.record.name", {... dict of record data ...}
+    #
+    # The goal is to translate the last case into a form which causes faust to
+    # reconstruct the faust_avro.Record subclass for us. In order to do that we
+    # need to annotate the dict of record data like so:
+    #     {..., "__faust": {"ns": "avro.record.name"}}
+    #
+    # Primitives fail the first line with a TypeError.
+    # A union's primitive branch fails the second line (**data) with ValueError
+    #     but the destructuring did work, so we're returning the real value and
+    #     throwing away the namespace.
+    # A union's record branch actually exits the try successfully.
     try:
         ns, data = data
         return dict(**data, __faust=dict(ns=ns))
