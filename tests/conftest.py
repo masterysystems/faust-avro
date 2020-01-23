@@ -1,4 +1,5 @@
 import tempfile
+from unittest.mock import patch
 
 import pytest
 from faust_avro import App
@@ -8,6 +9,18 @@ from faust_avro import App
 def app(request):
     with tempfile.TemporaryDirectory() as temp:
         yield App("unittest", datadir=temp)
+
+
+@pytest.fixture
+def asr_sync(app):
+    with patch.object(app.avro_schema_registry, "sync", spec=True) as mock:
+        yield mock
+
+
+@pytest.fixture
+def asr_schema_by_id(app):
+    with patch.object(app.avro_schema_registry, "schema_by_id", spec=True) as mock:
+        yield mock
 
 
 @pytest.fixture

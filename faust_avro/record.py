@@ -1,73 +1,39 @@
-import types
-from functools import lru_cache
-from typing import Any, Callable, ClassVar, Dict, Iterable, Optional, Type
+from typing import Any, Callable, ClassVar, Dict, Iterable, Optional, cast
 
 import faust
-from faust.models.fields import TYPE_TO_FIELD, FieldDescriptor
-from faust.models.record import _maybe_to_representation  # noqa: F401
-from faust.types.models import FieldDescriptorT, ModelT
 from faust.utils import codegen
 from typing_inspect import is_union_type
 
 
-# WORKAROUND for upstream bug
-# https://github.com/robinhood/faust/issues/386
-def _maybe_has_to_representation(val: ModelT = None) -> Optional[Any]:
-    return (
-        val.to_representation()
-        if val is not None and hasattr(val, "to_representation")
-        else val
-    )
-
-
-class UnionField(FieldDescriptor):
-    def prepare_value(self, value: Any, *, coerce: bool = None) -> Optional[str]:
-        if self.should_coerce(value, coerce):
-            for klass in self.type.__args__:
-                try:
-                    return klass.from_data(value)
-                except TypeError:
-                    # Wrong values passed, it wasn't this branch of the union
-                    pass
-                except AttributeError:
-                    # Likely a primitive, the return value below will take
-                    # care of selecting the right primitive
-                    pass
-
-        return value
-
-
-# MONKEY PATCH faust's field_for_type until we can get this upstreamed
-@lru_cache(maxsize=2048)
-def field_for_type(typ: Type) -> Type[FieldDescriptorT]:
+def faust_annotate(data):
+    # Translate from avro's named union records which returns (branch name, value)
+    # to faust's {..., "__faust": {"ns": branch name}}.
+    #
+    # This function receives data from fastavro. We could get:
+    # - a primitive, eg "a happy string"
+    # - a union branch of a primitive, eg (str, "another string")
+    # - a union branch of a record, eg ("avro.record.name", {... dict of record data ...}
+    #
+    # The goal is to translate the last case into a form which causes faust to
+    # reconstruct the faust_avro.Record subclass for us. In order to do that we
+    # need to annotate the dict of record data like so:
+    #     {..., "__faust": {"ns": "avro.record.name"}}
+    #
+    # Primitives fail the first line with a TypeError.
+    # A union's primitive branch fails the second line (**data) with ValueError
+    #     but the destructuring did work, so we're returning the real value and
+    #     throwing away the namespace.
+    # A union's record branch actually exits the try successfully.
     try:
-        return TYPE_TO_FIELD[typ]
-    except KeyError:
-        for item, DescriptorType in TYPE_TO_FIELD.items():
-            if isinstance(item, types.FunctionType) and item(typ):
-                return DescriptorType
-
-            try:
-                if issubclass(typ, item):
-                    return DescriptorType
-            except TypeError:
-                continue
-        return FieldDescriptor
-
-
-faust.models.record.field_for_type = field_for_type
-
-
-TYPE_TO_FIELD[is_union_type] = UnionField
+        ns, data = data
+        return dict(**data, __faust=dict(ns=ns))
+    except (TypeError, ValueError):
+        return data
 
 
 class Record(faust.Record, abstract=True):
     _avro_name: ClassVar[str]
     _avro_aliases: ClassVar[Iterable[str]]
-
-    def __init__(self, *args, **kwargs):
-        kwargs.setdefault("include_metadata", False)
-        super().__init__(*args, **kwargs)
 
     def __init_subclass__(
         cls,
@@ -79,60 +45,38 @@ class Record(faust.Record, abstract=True):
         cls._avro_name = avro_name or f"{cls.__module__}.{cls.__name__}"
         cls._avro_aliases = avro_aliases or [cls.__name__]
 
+    # Modify the translation of input fields in order to change
+    # from fastavro's schemaless reader's union return ('type', ...)
+    # to faust's {..., '__faust'={'ns': 'type'}}
+    @classmethod
+    def _BUILD_input_translate_fields(cls):
+        """Copied and modified from faust's Record._BUILD_input_translate_fields"""
+        translate = [
+            f"data[{field!r}] = data.pop({d.input_name!r}, None)"
+            for field, d in cls._options.descriptors.items()
+            if d.field != d.input_name
+        ]
+
+        for field, d in cls._options.descriptors.items():
+            if is_union_type(d.type):
+                translate.append(f"data[{field!r}] = faust_annotate(data[{field!r}])")
+
+        return cast(
+            Callable,
+            classmethod(
+                codegen.Function(
+                    "_input_translate_fields",
+                    ["cls", "data"],
+                    translate if translate else ["pass"],
+                    globals=globals(),
+                    locals=locals(),
+                )
+            ),
+        )
+
     @classmethod
     def to_avro(cls, registry) -> Dict[str, Any]:
         from faust_avro.parsers.faust import parse
 
         avro_schema = parse(registry, cls)
         return avro_schema.to_avro()
-
-    # WORKAROUND for upstream bug
-    # https://github.com/robinhood/faust/issues/386
-    @classmethod
-    def _BUILD_asdict(cls) -> Callable[..., Dict[str, Any]]:
-        preamble = [
-            "return self._prepare_dict({",
-        ]
-
-        fields = [
-            f"  {d.output_name!r}: {cls._BUILD_asdict_field(name, d)},"
-            for name, d in cls._options.descriptors.items()
-            if not d.exclude
-        ]
-
-        postamble = [
-            "})",
-        ]
-
-        return codegen.Method(
-            "_asdict",
-            [],
-            preamble + fields + postamble,
-            globals=globals(),
-            locals=locals(),
-        )
-
-    # WORKAROUND for upstream bug
-    # https://github.com/robinhood/faust/issues/386
-    @classmethod
-    def _BUILD_asdict_field(cls, name: str, field: FieldDescriptorT) -> str:
-        modelattrs = cls._options.modelattrs
-        is_model = name in modelattrs
-        if is_model:
-            generic = modelattrs[name]
-            if generic is list or generic is tuple:
-                return (
-                    f"[v.to_representation() for v in self.{name}] "
-                    f"if self.{name} is not None else None"
-                )
-            elif generic is set:
-                return f"self.{name}"
-            elif generic is dict:
-                return (
-                    f"{{k: v.to_representation() "
-                    f"  for k, v in self.{name}.items()}}"
-                )
-            else:
-                return f"_maybe_to_representation(self.{name})"
-        else:
-            return f"_maybe_has_to_representation(self.{name})"
