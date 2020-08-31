@@ -70,15 +70,18 @@ class UserRequest(Record, coerce=True):
 # App
 ##############################################################################
 app = App(
-    "users", broker="kafka://localhost", reply_create_topic=True, topic_partitions=1
+    "examples.users",
+    broker="kafka://localhost",
+    reply_create_topic=True,
+    topic_partitions=1,
 )
 users_requests = app.topic(
-    "_users_requests", key_type=UserKey, value_type=UserRequest, internal=True
+    "examples.users.requests", key_type=UserKey, value_type=UserRequest, internal=True
 )
 cleaned_users_requests = app.topic(
-    "users", key_type=UserKey, value_type=UserRequest, internal=True
+    "examples.users", key_type=UserKey, value_type=UserRequest, internal=True
 )
-users_table = app.Table("users_table", partitions=1)
+users_table = app.Table("examples.users.table", partitions=1)
 
 
 ##############################################################################

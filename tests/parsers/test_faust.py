@@ -73,7 +73,7 @@ def test_faust(registry):
         # Nested
         nested: Optional[Nested] = None
         # Recursive
-        recursive: Optional["Faust"] = None
+        recursive: Optional["Faust"] = None  # noqa: F821
 
     # Parse the class...
     gen = Faust.to_avro(registry)
