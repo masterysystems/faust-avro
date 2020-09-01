@@ -13,7 +13,11 @@ Subject = str
 Schema = str
 
 
-CONTENT_TYPE = {"Content-Type": "application/vnd.schemaregistry.v1+json"}
+GET = {"Accept": "application/vnd.schemaregistry.v1+json"}
+POST = {
+    "Content-Type": "application/vnd.schemaregistry.v1+json",
+    "Accept": "application/vnd.schemaregistry.v1+json",
+}
 
 
 def _run_in_thread(coro: typing.Awaitable) -> None:
@@ -64,7 +68,7 @@ class ConfluentSchemaRegistryClient:
     async def get(self, path: str) -> JSON:
         # We can't use raise_for_status because it causes vcrpy to not write
         # that response into the cassettes.
-        async with aiohttp.ClientSession() as session:
+        async with aiohttp.ClientSession(headers=GET) as session:
             async with session.get(self.url + path) as response:
                 yield await response.json()
 
@@ -72,7 +76,7 @@ class ConfluentSchemaRegistryClient:
     async def post(self, path: str, **json: typing.Any) -> JSON:
         # We can't use raise_for_status because it causes vcrpy to not write
         # that response into the cassettes.
-        async with aiohttp.ClientSession(headers=CONTENT_TYPE) as session:
+        async with aiohttp.ClientSession(headers=POST) as session:
             async with session.post(self.url + path, json=json) as response:
                 yield await response.json()
 
@@ -154,7 +158,7 @@ class ConfluentSchemaRegistryClient:
         url = f"/compatibility/subjects/{subject}/versions/latest"
         async with self.post(url, schema=schema) as json:
             # https://docs.confluent.io/1.0/schema-registry/docs/api.html#post--compatibility-subjects-(string-%20subject)-versions-(versionId-%20version)
-            if json.get("error_code", False) == 40401:
+            if json.get("error_code", False) in [404, 40401]:
                 # "Subject not found" so as the first upload, it will be compatible with itself.
                 return True
             return json["is_compatible"]
